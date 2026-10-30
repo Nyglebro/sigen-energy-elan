@@ -121,7 +121,9 @@ class EnergyModel:
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self.uid_base)},
-            name="Sigen Energy for ELAN",
+            # Keep the upstream device name for Solar Pro discovery. The HACS
+            # integration keeps its independent name, domain and storage.
+            name="Innovo Energy",
             manufacturer="Innovo",
             model=f"Energy model ({self.source.brand})",
             **self._parent_device(),

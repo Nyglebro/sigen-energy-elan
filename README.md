@@ -2,7 +2,7 @@
 
 Experimental Home Assistant integration for **Sigenergy ESS → Magic Cube → ELAN Solar Pro**. Derived from [Innovo Energy 1.2.2](https://github.com/InnovoDeveloper/innovo-energy), with a native Sigenergy source and its own HACS identity.
 
-**Version 0.1.0 — experimental, not yet validated on a live Cube/ELAN installation.** Target: [Sigenergy ESS 1.2.7.5](https://github.com/TypQxQ/Sigenergy-Local-Modbus/tree/v.1.2.7.5), one inverter, single-phase L/N. Both integrations must run on the same Home Assistant. No ELAN Driver Studio is required.
+**Version 0.1.1 — experimental, not yet validated on a live Cube/ELAN installation.** Target: [Sigenergy ESS 1.2.7.5](https://github.com/TypQxQ/Sigenergy-Local-Modbus/tree/v.1.2.7.5), one inverter, single-phase L/N. Both integrations must run on the same Home Assistant. No ELAN Driver Studio is required.
 
 ## Install using HACS
 
@@ -52,3 +52,9 @@ Run locally: `python -m unittest discover -s tests -v`.
 Based on Innovo Energy commit `53c0135264647de44c4a4f915c08250a0cde46b7`. Sigenergy mappings were checked against `v.1.2.7.5` commit `b66e3042de6396205c33f3603108579b7ef73e6a`.
 
 Apache License 2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Bundled font licences are retained. This independent experimental fork is not an official Innovo or Sigenergy product.
+
+## 0.1.1 discovery compatibility update
+
+Restores the Home Assistant device name to **Innovo Energy**, while the HACS/integration name remains **Sigen Energy for ELAN** and its domain remains `sigen_energy`. This is a targeted compatibility attempt for Solar Pro's “No Innovo Energy device found” message; the compiled driver's exact discovery filter has not been verified.
+
+Existing installations: redownload/update this repository in HACS (default branch), restart Home Assistant, confirm the energy-model device is named **Innovo Energy**, then press **Install/Reload** in Solar Pro. If you set a custom device name, change that name to **Innovo Energy** too. Do not remove/recreate the integration for this update. If discovery still fails, capture the driver debug output so domain/identifier filtering can be investigated. Existing entity IDs and the storage key are unchanged.
