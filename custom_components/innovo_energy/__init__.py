@@ -141,11 +141,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Refuse concurrent providers instead of silently creating _2 entities.
     registry = er.async_get(hass)
     conflicts = [e.entity_id for e in registry.entities.values()
-                 if e.platform in ("innovo_energy", "innovo_solar_edge")
+                 if e.platform in ("sigen_energy", "innovo_solar_edge")
                  and e.entity_id.startswith(("sensor.energy_", "image.energy_", "number.energy_"))]
-    if hass.data.get("innovo_energy") or conflicts:
+    if hass.data.get("sigen_energy") or conflicts:
         raise ConfigEntryError(
-            "Remove the configured Innovo Energy entry before setting up Sigen Energy for ELAN. "
+            "Remove the old Sigen Energy or Innovo Solar Edge energy entry before setting up Sigen Energy for ELAN. "
             "Both providers use the same Solar Pro entity names and image folder. Back up first."
         )
     if any(key != entry.entry_id for key in hass.data.get(DOMAIN, {})):

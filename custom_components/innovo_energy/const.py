@@ -1,6 +1,6 @@
 """Constants for Sigen Energy for ELAN."""
 
-DOMAIN = "sigen_energy"
+DOMAIN = "innovo_energy"
 PLATFORMS = ["sensor", "binary_sensor", "number", "select", "date", "button", "image"]
 
 # options (the same keys Innovo Solar Edge used, so a site moving over keeps its settings)

@@ -1,7 +1,7 @@
 """Electricity rate plans: manual time-of-use plans, price sensor, overrides.
 
 A plan is plain data, editable in the options flow (text rows) or over the API
-(`sigen_energy.set_tariff` with JSON, `set_tariff_rates` by period name):
+(`innovo_energy.set_tariff` with JSON, `set_tariff_rates` by period name):
 
     {
       "name": "My TOU plan", "currency": "USD", "tier_period": "month",

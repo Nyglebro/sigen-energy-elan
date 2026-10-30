@@ -51,7 +51,7 @@
       },
       "rate_plan": {
         "title": "Electricity rate plan",
-        "description": "Time-of-use prices for this site. Write one row per line as `HH:MM price name`, e.g. `16:00 0.64 On-peak`; each row lasts until the next and every day must start at 00:00. Months: `6-9` or `1,2,3`. Leave the weekend box empty to reuse weekday rows, and leave season 2 empty for a single all-year season. Tiered plans and more seasons can be set over the API (sigen_energy.set_tariff). {error}",
+        "description": "Time-of-use prices for this site. Write one row per line as `HH:MM price name`, e.g. `16:00 0.64 On-peak`; each row lasts until the next and every day must start at 00:00. Months: `6-9` or `1,2,3`. Leave the weekend box empty to reuse weekday rows, and leave season 2 empty for a single all-year season. Tiered plans and more seasons can be set over the API (innovo_energy.set_tariff). {error}",
         "data": {
           "name": "Plan name",
           "currency": "Currency",

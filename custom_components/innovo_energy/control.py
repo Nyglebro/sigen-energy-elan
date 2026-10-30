@@ -33,12 +33,12 @@ RESTART_DELAY = 5
 
 def handoff_path(hass: HomeAssistant) -> str:
     """Live screen data the integration hands to the web app every minute."""
-    return hass.config.path(".storage", "sigen_energy.screen-data.json")
+    return hass.config.path(".storage", "innovo_energy.screen-data.json")
 
 
 def webapp_state_path(hass: HomeAssistant) -> str:
     """The web app's own state (the generated looks)."""
-    return hass.config.path(".storage", "sigen_energy.webapp.json")
+    return hass.config.path(".storage", "innovo_energy.webapp.json")
 
 
 def _mtimes() -> tuple:
@@ -54,7 +54,7 @@ class WebAppSupervisor:
         self._stopping = False
 
     def start(self) -> None:
-        self._task = self.hass.async_create_background_task(self._run(), "sigen_energy web app")
+        self._task = self.hass.async_create_background_task(self._run(), "innovo_energy web app")
 
     async def async_stop(self) -> None:
         self._stopping = True

@@ -9,9 +9,9 @@ import types
 import unittest
 
 BASE = Path(__file__).resolve().parents[1]
-ROOT = BASE / 'custom_components/sigen_energy'
+ROOT = BASE / 'custom_components/innovo_energy'
 if not ROOT.exists():
-    ROOT = BASE / 'custom_components/sigen_energy'
+    ROOT = BASE / 'custom_components/innovo_energy'
 for name in ('homeassistant','homeassistant.config_entries','homeassistant.const','homeassistant.core',
              'homeassistant.exceptions','homeassistant.helpers','homeassistant.helpers.entity_registry',
              'homeassistant.helpers.event'):

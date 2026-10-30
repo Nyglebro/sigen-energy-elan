@@ -1,5 +1,5 @@
 {
-  "domain": "sigen_energy",
+  "domain": "innovo_energy",
   "name": "Sigen Energy for ELAN",
   "after_dependencies": [
     "sigen",
@@ -16,5 +16,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/Nyglebro/sigen-energy-elan/issues",
   "requirements": [],
-  "version": "0.1.1"
+  "version": "0.2.0"
 }

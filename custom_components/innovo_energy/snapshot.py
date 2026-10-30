@@ -245,7 +245,7 @@ class SnapshotPublisher:
     @callback
     def start(self) -> None:
         self._unsub = async_track_time_interval(self.hass, self._tick, INTERVAL)
-        self.hass.async_create_background_task(self._tick(force=True), "sigen_energy screens")
+        self.hass.async_create_background_task(self._tick(force=True), "innovo_energy screens")
 
     @callback
     def stop(self) -> None:
@@ -280,7 +280,7 @@ class SnapshotPublisher:
         self.model.notify()
 
     def _write_handoff(self, data: dict) -> None:
-        """Screen data for the web app: <config>/.storage/sigen_energy.screen-data.json"""
+        """Screen data for the web app: <config>/.storage/innovo_energy.screen-data.json"""
         handoff = {
             "publish_dir": self.publish_dir,
             "kinds": list(self.publish_kinds),

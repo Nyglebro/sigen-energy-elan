@@ -3,7 +3,7 @@ provision_dashboards:
     config_entry_id:
       selector:
         config_entry:
-          integration: sigen_energy
+          integration: innovo_energy
     energy_dashboard:
       default: true
       selector:
@@ -25,7 +25,7 @@ set_tariff:
     config_entry_id:
       selector:
         config_entry:
-          integration: sigen_energy
+          integration: innovo_energy
     plan:
       required: true
       selector:
@@ -35,7 +35,7 @@ set_tariff_rates:
     config_entry_id:
       selector:
         config_entry:
-          integration: sigen_energy
+          integration: innovo_energy
     rates:
       required: true
       example: '{"On-peak": 0.64, "Off-peak": 0.40}'
@@ -50,7 +50,7 @@ generate_screens:
     config_entry_id:
       selector:
         config_entry:
-          integration: sigen_energy
+          integration: innovo_energy
     style:
       required: true
       example: plasma
@@ -73,7 +73,7 @@ remove_screens:
     config_entry_id:
       selector:
         config_entry:
-          integration: sigen_energy
+          integration: innovo_energy
     look:
       required: true
       example: plasma--neon-dark
@@ -84,4 +84,4 @@ clean_screens:
     config_entry_id:
       selector:
         config_entry:
-          integration: sigen_energy
+          integration: innovo_energy
