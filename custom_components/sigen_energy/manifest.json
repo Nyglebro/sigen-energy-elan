@@ -1,0 +1,20 @@
+{
+  "domain": "sigen_energy",
+  "name": "Sigen Energy for ELAN",
+  "after_dependencies": [
+    "sigen",
+    "recorder",
+    "energy",
+    "lovelace"
+  ],
+  "codeowners": [
+    "@Nyglebro"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/Nyglebro/sigen-energy-elan",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/Nyglebro/sigen-energy-elan/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

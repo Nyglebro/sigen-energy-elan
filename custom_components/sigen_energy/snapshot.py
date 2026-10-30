@@ -1,0 +1,409 @@
+"""Dashboard screens (720 x 720 PNG) for controllers that can only show pictures.
+
+Seven pages drawn by screens.py - overview, live, today, battery, money, solar,
+week. Most are redrawn every 60 s, solar and week every 10 minutes; a page with
+no data yet shows a "gathering data" placeholder. Each page is
+an image entity (authenticated); with the 'Publish the dashboard image' option
+each page is also written under /local with an unguessable name so a controller
+can load it with a plain URL. With a publish folder set, the screens web app
+(webapp/service.py, started by control.py) writes every page and the overview
+variants (overview-slot, overview-flow) there as JPG with fixed names,
+<page>-<shape>-<res>.jpg for each shape in screens.FORMATS (1x1, 16x9, 4x3, 9x10,
+9x16) in hires and lowres, plus <page>.jpg (square, low-res) - for a folder another
+web server on the box already serves over HTTP; with the PNG option also as .png
+(see screens.PNG_STYLE). This module hands it the screen data every minute.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+import logging
+import os
+import re
+import secrets
+import shutil
+
+from homeassistant.components.image import ImageEntity
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import dt as dt_util
+
+from .control import handoff_path
+from .screens import (
+    FORMATS, PAGES, SIZE, VARIANTS, all_file_names, published_kinds, render,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+CONF_SNAPSHOT_FILE = "energy_snapshot_file"
+CONF_PUBLISH_DIR = "energy_publish_dir"
+CONF_PUBLISH_PNG = "energy_publish_png"  # also transparent PNGs
+CONF_BATTERY = "energy_battery"          # the site has a battery: show its page, graphs and flows (default on)
+SITE_PAGE = "index.html"  # viewer page and its data, written by the web app (webapp/service.py)
+SITE_INFO = "screens.json"
+PREVIEWS = "previews"     # one thumbnail per graphics style, for the design picker
+LOOK_RE = re.compile(r"^([a-z]+)--([a-z]+)-([a-z]+)$")
+INTERVAL = datetime.timedelta(seconds=60)
+SLOW_PAGES = {"solar": 10, "week": 10}  # redraw every N minutes
+WWW_DIR = "innovo_solar_edge"
+MAIN_PAGE = "live"
+
+
+def show_battery(model) -> bool:
+    """The 'This system has a battery' setting: battery page, graphs and flows on or off."""
+    return bool(model.entry.options.get(CONF_BATTERY, True))
+
+
+def _electrical(model) -> dict:
+    """Live electrical and equipment readings for the Power and System Health screens
+    (read by the data source on each update)."""
+    return dict(model.values.get("electric") or {})
+
+
+def reserve_pct(model) -> float | None:
+    """The battery reserve: as set in the equipment when it reports one, else the setting."""
+    from_equipment = model.source.reserve_pct()
+    return from_equipment if from_equipment is not None else model.settings.get("reserve")
+
+
+def screen_data(model) -> dict:
+    """Everything the screens need, as plain values (built in the event loop)."""
+    from .tariff import SRC_PLAN, plan_price
+
+    hass = model.hass
+    v = model.values
+    now = dt_util.now()
+    today = now.date().isoformat()
+    cur = hass.config.currency
+    settings = model.settings
+    data = {
+        "now": now,
+        "currency": cur,
+        "inverter": v.get("inverter_status"),
+        "solar_w": v.get("solar_w"),
+        "house_w": v.get("house_w"),
+        "grid_w": v.get("grid_w"),
+        "battery_w": v.get("battery_w"),
+        "battery_level": v.get("battery_level"),
+        "battery_state": v.get("battery_state"),
+        "solar_share": v.get("solar_share_now"),
+        "price": v.get("price"),
+        "period": v.get("period"),
+        "saved_today": v.get("saved_today"),
+        "cost_today": v.get("cost_today"),
+        "today": v.get("today") or {},
+        "house_today": v.get("house_today"),
+        "self_sufficiency": v.get("self_sufficiency_today"),
+        "reserve": reserve_pct(model),
+        "capacity": settings.get("battery_kwh"),
+        "efficiency": v.get("efficiency_spec"),
+        "health": v.get("health"),
+        "cleaning": v.get("cleaning"),
+        "array_kw": v.get("array_kw"),
+        "best_kwh": v.get("best_kwh"),
+        "best_date": v.get("best_date"),
+        "avg7": v.get("avg7"),
+        "lifetime_avg": v.get("lifetime_avg"),
+        "has_grid": model.has_grid,
+        "has_battery": show_battery(model),
+        "inverter_kw": model.inverter_kw,
+        "typical_today": v.get("typical_today"),
+        "today_vs_typical": v.get("today_vs_typical"),
+        # the flow lines' pattern moves a quarter step each minute, so every refresh differs
+        "_phase": (now.hour * 60 + now.minute) % 4 / 4,
+    }
+
+    data["electric"] = _electrical(model)
+    data["not_available"] = sorted(model.not_available())
+    if model.source.has_panels:  # per-panel output (microinverters) for the Panels screen
+        try:
+            data["panels"] = model.source.panels()
+        except Exception:  # a detail, never worth losing the screens over
+            data["panels"] = []
+
+    series = model.data.get("series") or {}
+    data["series"] = list(series.get("pts") or []) if series.get("date") == today else []
+    if not data["has_battery"]:  # battery switched off in the settings: no battery anywhere on the screens
+        data.update(battery_w=None, battery_level=None, battery_state=None)
+        data["series"] = [[*p[:4], None, None] for p in data["series"]]
+
+    # battery time to full / to reserve
+    bw, level, cap = data["battery_w"], data["battery_level"], settings.get("battery_kwh") or 0
+    reserve = reserve_pct(model) or 0
+    if bw and level is not None and cap:
+        if bw > 150:
+            data["time_to_full"] = (100 - level) / 100 * cap / (bw / 1000)
+        elif bw < -150:
+            data["time_to_empty"] = max(level - reserve, 0) / 100 * cap / (-bw / 1000)
+
+    # next price change
+    nxt = v.get("next_price")
+    if nxt and nxt.get("at"):
+        data["next"] = {"price": nxt.get("price"), "period": nxt.get("period"),
+                        "at": dt_util.as_local(nxt["at"]).strftime("%H:%M")}
+
+    # today's price timeline (15-minute slots) from the rate plan
+    tariff = model.tariff
+    if tariff.plan and tariff.state.get("source") == SRC_PLAN and not tariff.state.get("override"):
+        midnight = dt_util.start_of_local_day()
+        usage_day = (v.get("today") or {}).get("import")
+        data["price_slots"] = [
+            plan_price(tariff.plan, midnight + datetime.timedelta(minutes=15 * i), usage_day, None)[:2]
+            for i in range(96)
+        ]
+
+    # sun
+    try:
+        from homeassistant.helpers.sun import get_astral_event_date
+
+        rise = get_astral_event_date(hass, "sunrise", now.date())
+        sset = get_astral_event_date(hass, "sunset", now.date())
+        if rise and sset:
+            rise, sset = dt_util.as_local(rise), dt_util.as_local(sset)
+            data["sun"] = {
+                "rise": rise.strftime("%H:%M"),
+                "set": sset.strftime("%H:%M"),
+                "progress": (now - rise).total_seconds() / (sset - rise).total_seconds(),
+            }
+    except Exception:  # no location configured
+        pass
+
+    # history: 30 days vs typical, last 7 days, week comparisons
+    history = model.data.get("history") or []
+    data["days30"] = [(d[0], d[1], model._typical_day(d[0])) for d in history[-30:]]
+    days = [
+        {"date": d[0], "solar": d[1], "house": d[2], "import": d[3],
+         "cost": d[5] if len(d) > 5 else None, "saved": d[6] if len(d) > 6 else None}
+        for d in history
+    ]
+    t = v.get("today") or {}
+    days.append({"date": today, "solar": t.get("solar"), "house": v.get("house_today"), "import": t.get("import"),
+                 "cost": v.get("cost_today"), "saved": v.get("saved_today"), "today": True})
+    week = days[-7:]
+    for day in week:
+        day["label"] = datetime.date.fromisoformat(day["date"]).strftime("%a").upper()
+        day["today"] = day.get("today", False)
+        house, imp = day.get("house"), day.get("import")
+        day["ss"] = (1 - imp / house) * 100 if house and imp is not None else None
+    data["week"] = week
+    data["week_totals"] = {k: sum((d.get(k) or 0) for d in week) for k in ("solar", "house", "import")}
+    saved = [d["saved"] for d in days[-7:] if d.get("saved") is not None]
+    costs = [d["cost"] for d in days[-7:] if d.get("cost") is not None]
+    data["week_saved"] = sum(saved) if saved else None
+    data["week_cost"] = sum(costs) if costs else None
+    if len(days) >= 15:
+        this = sum((d.get("solar") or 0) for d in days[-8:-1])
+        prev = sum((d.get("solar") or 0) for d in days[-15:-8])
+        data["week_change"] = (this / prev - 1) * 100 if prev else None
+    return data
+
+
+class SnapshotPublisher:
+    """Renders the pages on a timer for the image entities and optional /local files,
+    and hands the screen data to the web app (control.py), which draws the published
+    screens and the generated looks."""
+
+    def __init__(self, model):
+        self.model = model
+        self.hass: HomeAssistant = model.hass
+        self.images: dict[str, bytes] = {}
+        self.updated: dict[str, datetime.datetime] = {}
+        self._unsub = None
+        self._ticks = 0
+        self._ready = False
+        if not model.data.get("snapshot_secret"):
+            model.data["snapshot_secret"] = secrets.token_urlsafe(12)
+            model.save_soon()
+
+    @property
+    def file_enabled(self) -> bool:
+        return bool(self.model.entry.options.get(CONF_SNAPSHOT_FILE, False))
+
+    def file_name(self, page: str) -> str:
+        secret = self.model.data["snapshot_secret"]
+        return f"dashboard-{secret}.png" if page == MAIN_PAGE else f"dashboard-{secret}-{page}.png"
+
+    def url_path(self, page: str = MAIN_PAGE) -> str | None:
+        if not self.file_enabled:
+            return None
+        return f"/local/{WWW_DIR}/{self.file_name(page)}"
+
+    @property
+    def publish_dir(self) -> str | None:
+        return self.model.entry.options.get(CONF_PUBLISH_DIR) or None
+
+    @property
+    def publish_kinds(self) -> tuple[str, ...]:
+        return ("jpg", "png") if self.model.entry.options.get(CONF_PUBLISH_PNG) else ("jpg",)
+
+    def publish_path(self, page: str) -> str | None:
+        folder = self.publish_dir
+        return os.path.join(folder, f"{page}.jpg") if folder else None
+
+    @callback
+    def start(self) -> None:
+        self._unsub = async_track_time_interval(self.hass, self._tick, INTERVAL)
+        self.hass.async_create_background_task(self._tick(force=True), "sigen_energy screens")
+
+    @callback
+    def stop(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    async def _tick(self, _now=None, force: bool = False) -> None:
+        self._ticks += 1
+        try:
+            data = screen_data(self.model)
+        except Exception:
+            _LOGGER.exception("Screen data failed")
+            return
+        ready = data.get("inverter") is not None and data.get("house_w") is not None
+        if ready and not self._ready:
+            self._ready, force = True, True  # redraw everything once real data has arrived
+        if self.publish_dir:  # the web app draws the published screens and looks from this
+            await self.hass.async_add_executor_job(self._write_handoff, data)
+        pages = [p for p in PAGES if (force or p not in self.images or self._ticks % SLOW_PAGES.get(p, 1) == 0)
+                 and (p != "panels" or self.model.source.has_panels)]
+        for page in pages:
+            try:
+                png = await self.hass.async_add_executor_job(render, page, data)
+            except Exception:
+                _LOGGER.exception("Rendering the %s screen failed", page)
+                continue
+            self.images[page] = png
+            self.updated[page] = dt_util.utcnow()
+            if self.file_enabled:
+                await self.hass.async_add_executor_job(self._write_file, page, png)
+        self.model.notify()
+
+    def _write_handoff(self, data: dict) -> None:
+        """Screen data for the web app: <config>/.storage/sigen_energy.screen-data.json"""
+        handoff = {
+            "publish_dir": self.publish_dir,
+            "kinds": list(self.publish_kinds),
+            "looks_seed": list(self.model.data.get("looks") or []),  # looks made before the web app ran on its own
+            "data": data,
+        }
+        try:
+            _write_atomic(handoff_path(self.hass), json.dumps(handoff, default=_encode).encode())
+        except (OSError, TypeError, ValueError) as err:
+            _LOGGER.warning("Can't hand the screen data to the web app: %s", err)
+
+    def _write_file(self, page: str, image: bytes) -> None:
+        folder = self.hass.config.path("www", WWW_DIR)
+        os.makedirs(folder, exist_ok=True)
+        _write_atomic(os.path.join(folder, self.file_name(page)), image)
+
+
+def _encode(value):
+    """JSON for the handoff: datetimes as {"__dt__": iso} (the web app turns them back)."""
+    if isinstance(value, datetime.datetime):
+        return {"__dt__": value.isoformat()}
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    if isinstance(value, (set, tuple)):
+        return list(value)
+    raise TypeError(f"{type(value).__name__} is not JSON serialisable")
+
+
+def published_names() -> list[str]:
+    """Every file the publisher can write, for clean-up when the integration is removed."""
+    return [SITE_PAGE, SITE_INFO, *sorted(all_file_names(PAGES + list(VARIANTS)))]
+
+
+def remove_published(folder: str) -> None:
+    """Delete the published screens and viewer page (not the folder's other files)."""
+    for name in published_names():
+        for path in (os.path.join(folder, name), os.path.join(folder, name) + ".tmp"):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    for entry in os.listdir(folder) if os.path.isdir(folder) else []:  # looks and style previews
+        if entry == PREVIEWS or LOOK_RE.match(entry):
+            shutil.rmtree(os.path.join(folder, entry), ignore_errors=True)
+    try:
+        os.rmdir(folder)  # only if nothing else is in it
+    except OSError:
+        pass
+
+
+def _write_atomic(target: str, data: bytes) -> None:
+    """Write via a temp file so a web server never serves a half-written image."""
+    tmp = target + ".tmp"
+    with open(tmp, "wb") as handle:
+        handle.write(data)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, target)
+
+
+def _base():
+    from .energy import EnergyEntityMixin
+    return EnergyEntityMixin
+
+
+class ScreenImage(_base(), ImageEntity):
+    _attr_content_type = "image/png"
+
+    def __init__(self, model, page: str):
+        ImageEntity.__init__(self, model.hass)
+        if page == MAIN_PAGE:  # keeps the original entity for existing installs
+            _base().__init__(self, model, "dashboard_image", "energy_dashboard_image", "image")
+            self._attr_name = "Dashboard Image"
+        else:
+            _base().__init__(self, model, f"screen_{page}", f"energy_screen_{page}", "image")
+            self._attr_name = f"Screen {page.title()}"
+        self._page = page
+        self._attr_icon = "mdi:monitor-dashboard"
+
+    @property
+    def image_last_updated(self):
+        return self._model.snapshot.updated.get(self._page)
+
+    @property
+    def extra_state_attributes(self):
+        return {"page": self._page, "size": f"{SIZE}x{SIZE}"}
+
+    async def async_image(self) -> bytes | None:
+        image = self._model.snapshot.images.get(self._page)
+        if image is None:  # not drawn yet: serve the "gathering data" placeholder
+            image = await self.hass.async_add_executor_job(
+                render, self._page, {"now": dt_util.now(), "currency": self.hass.config.currency}
+            )
+        return image
+
+
+class DashboardImageUrl(_base(), SensorEntity):
+    _attr_icon = "mdi:link-variant"
+    _attr_name = "Dashboard Image URL"
+
+    def __init__(self, model):
+        super().__init__(model, "dashboard_image_url", "energy_dashboard_image_url", "sensor")
+
+    @property
+    def native_value(self):
+        return self._model.snapshot.url_path() or "disabled"
+
+    @property
+    def extra_state_attributes(self):
+        snap = self._model.snapshot
+        return {
+            "size": f"{SIZE}x{SIZE}",
+            "refresh_seconds": int(INTERVAL.total_seconds()),
+            "pages": {p: snap.url_path(p) for p in PAGES} if snap.file_enabled else None,
+            "publish_dir": snap.publish_dir,
+            "published_files": "<page>-<shape>-<res>.jpg" if snap.publish_dir else None,
+            "published_formats": published_kinds(snap.publish_kinds) if snap.publish_dir else None,
+            "published_pages": PAGES + list(VARIANTS) if snap.publish_dir else None,
+            "published_shapes": {shape: {res: f"{w}x{h}" for res, (w, h) in sizes.items()}
+                                 for shape, sizes in FORMATS.items()} if snap.publish_dir else None,
+            "image_entities": {p: ("image.energy_dashboard_image" if p == MAIN_PAGE else f"image.energy_screen_{p}")
+                               for p in PAGES},
+        }
+
+
+def screen_images(model) -> list[ImageEntity]:
+    return [ScreenImage(model, page) for page in PAGES if page != "panels" or model.source.has_panels]

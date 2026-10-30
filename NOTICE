@@ -1,0 +1,9 @@
+Sigen Energy for ELAN
+Derived from Innovo Energy 1.2.2 by InnovoDeveloper.
+Upstream: https://github.com/InnovoDeveloper/innovo-energy
+Base commit: 53c0135264647de44c4a4f915c08250a0cde46b7
+
+Local modifications: Sigenergy source adapter, measured-data handling,
+source setup, renamed integration/services/storage, coexistence checks,
+status and voltage display handling. Not endorsed by Innovo or Sigenergy.
+Original Apache-2.0 licence and font licences retained.

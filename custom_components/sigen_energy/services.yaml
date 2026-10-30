@@ -1,0 +1,87 @@
+provision_dashboards:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: sigen_energy
+    energy_dashboard:
+      default: true
+      selector:
+        boolean:
+    dashboard:
+      default: true
+      selector:
+        boolean:
+    url_path:
+      example: solar-energy
+      selector:
+        text:
+    title:
+      example: Solar & Energy
+      selector:
+        text:
+set_tariff:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: sigen_energy
+    plan:
+      required: true
+      selector:
+        object:
+set_tariff_rates:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: sigen_energy
+    rates:
+      required: true
+      example: '{"On-peak": 0.64, "Off-peak": 0.40}'
+      selector:
+        object:
+    season:
+      example: Summer
+      selector:
+        text:
+generate_screens:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: sigen_energy
+    style:
+      required: true
+      example: plasma
+      selector:
+        select:
+          options: [neon, alhazen, modern, classic, eco, retro, blueprint, plasma, metro, circuit, steampunk, ethereal]
+    colours:
+      required: true
+      example: neon
+      selector:
+        select:
+          options: [neon, retro, modern, classic, alhazen, steampunk, ethereal, eco, blueprint]
+    mode:
+      example: dark
+      selector:
+        select:
+          options: [dark, light, black, white]
+remove_screens:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: sigen_energy
+    look:
+      required: true
+      example: plasma--neon-dark
+      selector:
+        text:
+clean_screens:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: sigen_energy
